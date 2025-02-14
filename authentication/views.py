@@ -363,7 +363,7 @@ class LoginPageView(FormView):
 
 
 
-class LogoutView(View):
+class UserLogoutView(View):
     def get(self, request):
         if request.user.is_authenticated:
             # Log the logout action
