@@ -573,7 +573,7 @@ class AdminDeleteUserView(LoginRequiredMixin, DeleteView):
        
        user = self.get_object()  # Capture user before deletion
        user_id = user.pk  # Store user ID before deletion
-       username = user.username  # Store username before deletion
+       username = user.full_name  # Store username before deletion
 
        response = super().delete(request, *args, **kwargs)  # Perform deletion
 
