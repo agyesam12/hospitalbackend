@@ -29,6 +29,7 @@ import openai
 from datetime import datetime, timedelta
 from django.utils.timezone import now
 import os
+from django.contrib.auth.hashers import make_password
 
 
 
