@@ -1,0 +1,89 @@
+{% extends 'main.html' %}
+{% load static %}
+{% block content %}
+<div class="container-fluid">
+  <div class="overlay"></div>
+  <div class="row justify-content-center align-items-center h-100">
+    <div class="col-lg-6 col-md-8 col-sm-12">
+      <div class="signup-card shadow-lg">
+        <div class="row no-gutters">
+          <div class="col-md-6">
+            <img src="{% static 'images/signup-image.jpeg' %}" class="img-fluid" alt="Sign Up Image">
+          </div>
+          <div class="col-md-6">
+            <div class="card-body">
+              <h2 class="text-center">Create An Account</h2>
+              <form method="post">
+                {% csrf_token %}
+                <fieldset class="form-group">
+                  <legend class="border-bottom mb-4">Register</legend>
+                  {{ form.as_p }}
+                </fieldset>
+                <ul id="password-requirements">
+                  <li id="length" class="invalid">Your password must contain at least 8 characters.</li>
+                  <li id="personal-info" class="invalid">Your password can’t be too similar to your other personal information.</li>
+                  <li id="common-password" class="invalid">Your password can’t be a commonly used password.</li>
+                  <li id="numeric" class="invalid">Your password can’t be entirely numeric.</li>
+                </ul>
+                <div class="form-group">
+                  <button class="btn btn-outline-info btn-block" type="submit">Register</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const passwordField = document.querySelector('#id_password1');
+  const lengthRequirement = document.querySelector('#length');
+  const personalInfoRequirement = document.querySelector('#personal-info');
+  const commonPasswordRequirement = document.querySelector('#common-password');
+  const numericRequirement = document.querySelector('#numeric');
+
+  passwordField.addEventListener('input', function() {
+    const password = passwordField.value;
+
+    // Check length
+    if (password.length >= 8) {
+      lengthRequirement.classList.remove('invalid');
+      lengthRequirement.classList.add('valid');
+    } else {
+      lengthRequirement.classList.remove('valid');
+      lengthRequirement.classList.add('invalid');
+    }
+
+    // Check personal info similarity (this is a simple example, you might want to use a more complex check)
+    const username = document.querySelector('#id_username').value;
+    if (password.includes(username)) {
+      personalInfoRequirement.classList.remove('valid');
+      personalInfoRequirement.classList.add('invalid');
+    } else {
+      personalInfoRequirement.classList.remove('invalid');
+      personalInfoRequirement.classList.add('valid');
+    }
+
+    // Check common passwords (you might want to use a more comprehensive list)
+    const commonPasswords = ['password', '123456', '12345678', 'qwerty'];
+    if (commonPasswords.includes(password)) {
+      commonPasswordRequirement.classList.remove('valid');
+      commonPasswordRequirement.classList.add('invalid');
+    } else {
+      commonPasswordRequirement.classList.remove('invalid');
+      commonPasswordRequirement.classList.add('valid');
+    }
+
+    // Check if entirely numeric
+    if (!isNaN(password)) {
+      numericRequirement.classList.remove('valid');
+      numericRequirement.classList.add('invalid');
+    } else {
+      numericRequirement.classList.remove('invalid');
+      numericRequirement.classList.add('valid');
+    }
+  });
+</script>
+
+{% endblock %}

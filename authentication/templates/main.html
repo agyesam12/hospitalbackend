@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Hospital Backend Test Project{% endblock %}</title>
+    
+    <link rel="shortcut icon" href="{% static 'assets/img/fav-logo.png' %}" type="image/x-icon" />
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="{% static 'assets/css/main.css' %}" />
+    <link rel="stylesheet" href="{% static 'assets/css/plugins/swiper.min.css' %}" />
+
+    <!-- Stripe and External Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-sweetalert/1.0.1/sweetalert.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://js.stripe.com/v3/"></script>
+</head>
+
+<body>
+
+    <!-- Display messages using SweetAlert -->
+    <script>
+        {% for message in messages %}
+            Swal.fire({
+                icon: "{{ message.tags }}", 
+                title: "{{ message }}",     
+                text: "{{ message }}", 
+                timer: 3800
+            });
+        {% endfor %}
+    </script>
+
+    {% block content %}
+    {% endblock %}
+
+    <!-- Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register("{% static 'service-worker.js' %}")
+                .then(reg => console.log("✅ Service Worker Registered"))
+                .catch(err => console.error("❌ Service Worker Error:", err));
+        }
+    </script>
+
+    <!-- JavaScript Dependencies -->
+    <script src="{% static 'assets/js/plugins/swiper-bundle.min.js' %}"></script>
+    <script src="{% static 'assets/js/plugins/bootstrap.js' %}"></script>
+    
+    <!-- Main JavaScript -->
+    <script src="{% static 'assets/js/main.js' %}"></script>
+    
+    <!-- Additional Settings -->
+    <script src="{% static 'assets/js/service-worker-settings.js' %}"></script>
+
+</body>
+</html>
