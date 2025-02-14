@@ -97,8 +97,8 @@ class DoctorAssignment(models.Model):
 
 
 class DoctorNote(models.Model):
-    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="doctor_notes")
-    patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="patient_notes")
+    doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="doctor_notes")
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="patient_notes")
     encrypted_notes = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
