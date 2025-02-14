@@ -27,6 +27,16 @@ def doctor_required(view_func, denied_url="home"):
     return wrapper
 
 
+def patient_required(view_func, denied_url="home"):
+    @functools.wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if (request.user.is_authenticated and request.user.is_patient) or (request.user.is_authenticated and request.user.is_admin):
+            return view_func(request, *args, **kwargs)
+        messages.info(request, "Page not found")
+        return redirect(denied_url)  
+    return wrapper
+
+
 
 def closing_time(view_func, denied_url="closing_time"):
     @functools.wraps(view_func)
