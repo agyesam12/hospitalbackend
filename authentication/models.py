@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 from packages.integerId import IntegerIDField
 from django.urls import reverse
 import base64
+from packages.utils import extract_actionable_steps
 
 ROLES = (
     ('Doctor','doctor'),
@@ -127,7 +128,7 @@ class DoctorNote(models.Model):
 
     def process_actionable_steps(self):
         """ 🔹 Call LLM to generate actionable steps """
-        from .utils import extract_actionable_steps
+        
         extract_actionable_steps(self)
 
 class ActionableStep(models.Model):
