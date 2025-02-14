@@ -4,8 +4,7 @@ from django.shortcuts import render,redirect
 from django.contrib import messages
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import SignupSerializer
-from django.views.generic import CreateView,UpdateView,DetailView,DeleteView,View,FormView
+from django.views.generic import CreateView,UpdateView,DetailView,DeleteView,View,FormView,ListView
 from .models import User
 from packages.logentry import create_log_entry
 from django.contrib.contenttypes.models import ContentType
@@ -14,17 +13,279 @@ from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import login, logout, authenticate
 from packages.decorators import admin_required, doctor_required, patient_required
+from django.utils.decorators import method_decorator
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import viewsets, status
+from .models import *
+from .serializers import DoctorAssignmentSerializer,UserSignupSerializer
+from rest_framework import generics, permissions
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.conf import settings
+from cryptography.fernet import Fernet
+import openai
+from datetime import datetime, timedelta
+from django.utils.timezone import now
+import os
 
 
-class SignupView(APIView):
-    def post(self, request):
-        serializer = SignupSerializer(data=request.data)
+
+#apis codes
+class UserSignupView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSignupSerializer
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            #return Response({'message': 'Account created successfully!'}, status=201)
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+            user = serializer.save()
+            return Response({"message": "User registered successfully", "user_id": user.id}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        return Response({
+            "message": "Login successful",
+            "access": response.data["access"],
+            "refresh": response.data["refresh"]
+        }, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()  # Blacklist the refresh token
+            return Response({"message": "Logout successful"}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class SecureView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"message": "You are authenticated!"})
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data['role'] = self.user.role  # Send user role in response
+        data['email'] = self.user.email
+        return data
+
+
+class LoginView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+
+
+class AssignDoctorView(generics.CreateAPIView):
+    """Assign a doctor to a patient"""
+    serializer_class = DoctorAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        patient = self.request.user
+        if patient.role != "Patient":
+            return Response({"error": "Only patients can assign a doctor"}, status=400)
+        serializer.save(patient=patient)
+
+
+class PatientDoctorsView(generics.ListAPIView):
+    """Retrieve all doctors assigned to a specific patient"""
+    serializer_class = DoctorAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return DoctorAssignment.objects.filter(patient=self.request.user)
+
+
+
+class DoctorPatientsView(generics.ListAPIView):
+    """Retrieve all patients assigned to a specific doctor"""
+    serializer_class = DoctorAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return DoctorAssignment.objects.filter(doctor=self.request.user)
+
+
+def encrypt_text(plaintext):
+    key = settings.SECRET_ENCRYPTION_KEY.encode()
+    cipher = Fernet(key)
+    return cipher.encrypt(plaintext.encode()).decode()
+
+
+def decrypt_text(encrypted_text):
+    key = settings.SECRET_ENCRYPTION_KEY.encode()
+    cipher = Fernet(key)
+    return cipher.decrypt(encrypted_text.encode()).decode()
+
+
+class SubmitDoctorNoteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request):
+        #Doctors submit notes for a patient (encrypted)
+        doctor = request.user
+        patient_id = request.data.get("patient_id")
+        raw_notes = request.data.get("notes")
+
+        if not patient_id or not raw_notes:
+            return Response({"error": "Patient ID and notes are required."}, status=400)
+
+        patient = get_object_or_404(User, id=patient_id, is_patient=True)
+        # Encrypting notes before saving
+        encrypted_notes = encrypt_text(raw_notes)
+        # Processing note with LLM
+        try:
+            llm_result = extract_actionable_steps(raw_notes)
+            checklist = llm_result.get("checklist", [])
+            plan = llm_result.get("plan", [])
+        except Exception as e:
+            return Response({"error": f"LLM processing failed: {str(e)}"}, status=500)
+
+        # Ensuring old notes are deleted
+        DoctorNote.objects.filter(doctor=doctor, patient=patient).delete()
+        ActionableStep.objects.filter(note__doctor=doctor, note__patient=patient).delete()
+
+        # Saving new note
+        note = DoctorNote.objects.create(doctor=doctor, patient=patient, encrypted_notes=encrypted_notes)
+        #saving a new actionable step
+        actionable_step = ActionableStep.objects.create(note=note, checklist=checklist, plan=plan)
+        #schedule remainders
+        schedule_reminders(patient, actionable_step)
+        return Response({
+            "message": "Note saved successfully!",
+            "note_id": note.id,
+            "actionable_steps": {
+                "checklist": checklist,
+                "plan": plan
+            }
+        }, status=201)
+
+
+class RetrieveDoctorNoteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, patient_id):
+         #Doctor or patient retrieves notes (decrypted) 
+        user = request.user
+        patient = get_object_or_404(User, id=patient_id, is_patient=True)
+
+        # Check permissions
+        if user.is_patient and user != patient:
+            return Response({"error": "Unauthorized"}, status=403)
+
+        if user.is_doctor:
+            note = DoctorNote.objects.filter(doctor=user, patient=patient).first()
+        else:
+            return Response({"error": "Unauthorized"}, status=403)
+        
+        if not note:
+            return Response({"error": "No notes found."}, status=404)
+
+        # Decrypting and returning
+        decrypted_notes = decrypt_text(note.encrypted_notes)
+        return Response({"patient": patient.full_name, "doctor": note.doctor.full_name, "notes": decrypted_notes})
+
+
+
+
+openai.api_key = settings.OPENAI_API_KEY  #
+
+def extract_actionable_steps(notes):
+    """ Calls OpenAI API to extract actionable steps from doctor notes. """
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # Use gpt-4 or gpt-3.5-turbo
+            messages=[
+                {"role": "system", "content": "You are a medical assistant that extracts actionable steps from doctor notes."},
+                {"role": "user", "content": f"Extract a checklist (immediate tasks) and a plan (scheduled actions) from these doctor notes: {notes}"}
+            ],
+            temperature=0.3
+        )
+
+        ai_response = response["choices"][0]["message"]["content"]
+
+        # Expecting structured JSON-like response from the LLM
+        return json.loads(ai_response)
+
+    except Exception as e:
+        return {"error": f"LLM processing failed: {str(e)}"}
+
+
+
+class MarkChecklistCompletedView(APIView):
+     #Allows patients to mark a checklist item as completed. 
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        patient = request.user
+        item = request.data.get("task")
+
+        if not item:
+            return Response({"error": "Task description is required"}, status=400)
+        step = ActionableStep.objects.filter(note__patient=patient).first()
+        if not step:
+            return Response({"error": "No actionable steps found."}, status=404)
+        step.mark_checklist_item_completed(item)
+        return Response({"message": f"Checklist task '{item}' marked as completed!"})
+
+
+class MarkPlanTaskCompletedView(APIView):
+    """ Allows patients to check-in and mark scheduled plan tasks as completed. """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        patient = request.user
+        task = request.data.get("task")
+        if not task:
+            return Response({"error": "Task description is required"}, status=400)
+        check_in = PatientCheckIn.objects.create(patient=patient)
+        check_in.mark_task_completed(task)
+        reminder = Reminder.objects.filter(patient=patient, task_description=task, completed=False).first()
+        if reminder:
+            reminder.mark_completed()
+        return Response({"message": f"Scheduled task '{task}' marked as completed!"})
+
+
+
+class UpcomingRemindersView(APIView):
+    # Retrieving upcoming reminders for a patient. 
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        patient = request.user
+        reminders = Reminder.objects.filter(patient=patient, completed=False, scheduled_at__gte=now())
+
+        data = [
+            {"task": r.task_description, "scheduled_at": r.scheduled_at}
+            for r in reminders
+        ]
+
+        return Response({"upcoming_reminders": data})
+
+
+def schedule_reminders(patient, actionable_step):
+    """ Creates reminders based on extracted plan. """
+    for task in actionable_step.plan:
+        for day in range(task["days"]):
+            reminder_date = datetime.datetime.now() + datetime.timedelta(days=day)
+            Reminder.objects.create(
+                patient=patient,
+                step=actionable_step,
+                task_description=task["task"],
+                scheduled_at=reminder_date
+            )
 
 
 class HomePage(View,LoginRequiredMixin):
@@ -32,6 +293,7 @@ class HomePage(View,LoginRequiredMixin):
 
     def get(self,request):
         return render(request,self.template_name)
+
 
 
 class UserSignUp(View):
@@ -118,7 +380,7 @@ class LogoutView(View):
 
 class ProfileUpdateView(LoginRequiredMixin, UpdateView):
     model = User
-    form_class = UserProfileForm
+    form_class = AdminUpdateUserForm
     template_name = 'profile_update.html'
     success_url = reverse_lazy('profile')
 
@@ -196,7 +458,7 @@ class AdminRegisterUsersView(CreateView):
 
 
 #admin view all users
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(admin_required, name='dispatch')
 class AdminUserListView(LoginRequiredMixin, ListView):
     model = User
     template_name = 'management/authentication/user_list.html'
@@ -214,7 +476,7 @@ class AdminUserListView(LoginRequiredMixin, ListView):
 
 #admin view only doctors
 
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(admin_required, name='dispatch')
 class AdminDoctorListView(LoginRequiredMixin, ListView):
     model = User
     template_name = 'management/authentication/user_list.html'
@@ -233,7 +495,7 @@ class AdminDoctorListView(LoginRequiredMixin, ListView):
 
 
 #admin view all patients
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(admin_required, name='dispatch')
 class AdminPatientListView(LoginRequiredMixin, ListView):
     model = User
     template_name = 'management/authentication/user_list.html'
@@ -325,7 +587,7 @@ class AdminDeleteUserView(LoginRequiredMixin, DeleteView):
 
 
 #admin change users password
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(admin_required, name='dispatch')
 class AdminChangeUserPasswordView(LoginRequiredMixin, FormView):
     template_name = 'management/authentication/change_password.html'
     form_class = AdminChangePasswordForm
