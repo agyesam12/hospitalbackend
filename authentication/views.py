@@ -18,6 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets, status
 from .models import *
 from .serializers import DoctorAssignmentSerializer,UserSignupSerializer
+from .serialzers import * 
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
