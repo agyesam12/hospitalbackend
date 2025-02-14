@@ -80,7 +80,30 @@ class AdminRegisterUserForm(UserCreationForm):
             'id_number': forms.TextInput(attrs={'class': 'form-control'}),
             'id_front_view': forms.FileInput(attrs={'class': 'form-control'}),
             'id_back_view': forms.FileInput(attrs={'class': 'form-control'}),
-            'nok_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'nok_phone': forms.TextInput(attrs={'class': 'form-control'}),
-            'nok_location': forms.TextInput(attrs={'class': 'form-control'}),
+            'specialization': forms.TextInput(attrs={'class': 'form-control'}),
+            'emergency_contact_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'emergency_contact_location': forms.TextInput(attrs={'class': 'form-control'}),
+            'emergency_contact_phone': forms.TextInput(attrs={'class': 'form-control'}),
         }
+
+
+class AdminUpdateUserForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = [
+            'full_name', 'email', 'phone_number',  'country', 'location', 'occupation', 'date_of_birth',
+            'gender', 'photo', 'id_type', 'id_number', 'id_front_view', 'id_back_view', 'specialization', 'emergency_contact_phone','emergency_contact_location','emergency_contact_relationship',
+             'password1', 'password2', 'is_doctor', 'is_patient', 'is_worker', 'is_admin','bio'
+        ]
+
+        def clean_email(self):
+           email = self.cleaned_data.get('email')
+           if User.objects.filter(email=email).exclude(pk=self.instance.pk).exists():
+              raise forms.ValidationError("This email is already in use! Try another email.")
+           return email
+
+        def clean_phone_number(self):
+            phone_number = self.cleaned_data.get('phone_number')
+            if User.objects.filter(phone_number=phone_number).exclude(pk=self.instance.pk).exists():
+               raise forms.ValidationError("This Phone Number is already in use! Try another phone number.")
+            return phone_number
