@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'authentication',
     'rest_framework',
+    'rest_framework_simplejwt',
     #'corsheaders',
     
 ]
@@ -107,6 +108,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 AUTH_USER_MODEL = 'authentication.User'
+
+SECRET_ENCRYPTION_KEY = os.environ.get("SECRET_ENCRYPTION_KEY")
+OPENAI_API_KEY  = os.environ.get('OPENAI_API_KEY')
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
@@ -135,15 +139,7 @@ MEDIA_URL = "media/"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-#restframework configurations
-#REST_FRAMEWORK = {
-    #'DEFAULT_AUTHENTICATION_CLASSES': [
-        #'rest_framework_simplejwt.authentication.JWTAuthentication',
-    #],
-    #'DEFAULT_PERMISSION_CLASSES': [
-        #'rest_framework.permissions.IsAuthenticated',
-    #]
-#}
+
 
 #SIMPLE_JWT = {
     #"ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
@@ -153,3 +149,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 #CORS_ALLOW_ALL_ORIGINS = True
 #CORS_ALLOWS_CREDENTIALS = TrueS
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),  # Tokens last for 1 hour
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # Refresh tokens last 7 days
+    "ROTATE_REFRESH_TOKENS": True,  # Generate new refresh token on refresh
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": "your_secret_key_here",  # Use env variable in production!
+}
