@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets, status
 from .models import *
 from .serializers import DoctorAssignmentSerializer,UserSignupSerializer
-from .serialzers import * 
+from .serializers import * 
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -312,6 +312,10 @@ class UserSignUp(View):
             user = form.save(commit=False)
             user_role = form.cleaned_data.get('role')
             user.role = user_role
+            if user.role == 'doctor':
+                user.is_doctor = True
+            elif user.role == 'patient':
+                user.is_patient = True
             user.save()
             messages.success(self.request, f"Account created successfully")
             return redirect('login')
