@@ -13,6 +13,7 @@ from .forms import *
 from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import login, logout, authenticate
+from packages.decorators import admin_required, doctor_required, patient_required
 
 
 class SignupView(APIView):
@@ -147,7 +148,7 @@ class ProfileUpdateView(LoginRequiredMixin, UpdateView):
 
 
 
-@method_decorator([staff_required], name='dispatch')
+@method_decorator([admin_required], name='dispatch')
 class AdminRegisterUsersView(CreateView):
     model = User
     template_name = 'admin_create_user.html'
@@ -157,11 +158,11 @@ class AdminRegisterUsersView(CreateView):
     def form_valid(self, form):
        
 
-       username = form.cleaned_data.get('username')
+       email = form.cleaned_data.get('email')
 
-    # Check if username already exists
-       if User.objects.filter(username=username).exists():
-         messages.error(self.request, "A user with this username already exists. Please choose a different one.")
+    # Check if email already exists
+       if User.objects.filter(email=username).exists():
+         messages.error(self.request, "A user with this email already exists. Please choose a different one.")
          return self.form_invalid(form)
 
        try:
@@ -192,5 +193,171 @@ class AdminRegisterUsersView(CreateView):
 
     def get_success_url(self):
         return reverse('home')
+
+
+#admin view all users
+@method_decorator(staff_required, name='dispatch')
+class AdminUserListView(LoginRequiredMixin, ListView):
+    model = User
+    template_name = 'management/authentication/user_list.html'
+    context_object_name = 'users'
+    paginate_by = 10  # Display 10 users per page
+
+    def get_queryset(self):
+        return User.objects.all().order_by('-date_joined')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_name'] = 'users_lists'
+        context['list_name'] = 'user_lists'
+        return context 
+
+#admin view only doctors
+
+@method_decorator(staff_required, name='dispatch')
+class AdminDoctorListView(LoginRequiredMixin, ListView):
+    model = User
+    template_name = 'management/authentication/user_list.html'
+    context_object_name = 'users'
+    paginate_by = 10  # Display 10 users per page
+
+    def get_queryset(self):
+        return User.objects.filter(is_doctor=True).order_by('-id')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_name'] = 'users_lists'
+        context['list_name'] = 'user_lists'
+        return context 
+
+
+
+#admin view all patients
+@method_decorator(staff_required, name='dispatch')
+class AdminPatientListView(LoginRequiredMixin, ListView):
+    model = User
+    template_name = 'management/authentication/user_list.html'
+    context_object_name = 'users'
+    paginate_by = 10  # Display 10 users per page
+
+    def get_queryset(self):
+        return User.objects.filter(is_patient=True).order_by('-id')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_name'] = 'users_lists'
+        context['list_name'] = 'user_lists'
+        return context 
+
+
+@method_decorator(admin_required, name='dispatch')
+class AdminUserDetailView(LoginRequiredMixin, DetailView):
+    model = User
+    template_name = 'management/authentication/user_details.html'
+    context_object_name = 'user'
+
+    # If you're using `user_id` instead of `pk`
+    slug_field = 'id'
+    slug_url_kwarg = 'id'
+
+#admin update users account
+@method_decorator(admin_required, name='dispatch')
+class AdminUpdateUserView(LoginRequiredMixin, UpdateView):
+    model = User
+    form_class = AdminUpdateUserForm
+    template_name = 'management/authentication/update_user.html'
+    context_object_name = 'user'
+
+    def form_valid(self, form):
+        messages.success(self.request, "User account updated successfully.")
+        #keeping track of the event
+        create_log_entry(
+            user=self.request.user,
+            content_type=ContentType.objects.get_for_model(User),
+            object_id=self.object.pk,
+            object_repr=str(self.object),
+            action_flag=1,
+            change_message=f"Admin {self.request.user} updated : {self.object.username} account"
+           )
+
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('user_details', kwargs={'pk': self.object.pk})
+    
+
+    def get_context_data(self,**kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_name'] = 'admin_update_account'
+        context['list_name'] = 'admin_updates'
+        return context
+
+
+
+@method_decorator(admin_required, name='dispatch')
+class AdminDeleteUserView(LoginRequiredMixin, DeleteView):
+    model = User
+    template_name = 'management/authentication/delete_user.html'
+    context_object_name = 'user'
+    success_url = reverse_lazy('admin_user_list')
+
+    def delete(self, request, *args, **kwargs):
+       
+       user = self.get_object()  # Capture user before deletion
+       user_id = user.pk  # Store user ID before deletion
+       username = user.username  # Store username before deletion
+
+       response = super().delete(request, *args, **kwargs)  # Perform deletion
+
+      # Log deletion after the user is deleted
+       create_log_entry(
+        user=self.request.user,
+        content_type=ContentType.objects.get_for_model(User),
+        object_id=user_id,  # Use stored user ID
+        object_repr=username,  # Use stored username
+        action_flag=3,  # 3 represents 'deletion' in Django's LogEntry model
+        change_message=f"Admin {self.request.user} deleted: {username} account"
+       )
+
+       messages.success(request, f"User {user.full_name} deleted successfully.")
+
+       return response
+
+
+#admin change users password
+@method_decorator(staff_required, name='dispatch')
+class AdminChangeUserPasswordView(LoginRequiredMixin, FormView):
+    template_name = 'management/authentication/change_password.html'
+    form_class = AdminChangePasswordForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["user"] = get_object_or_404(User, user_id=self.kwargs["user_id"])
+        return context
+
+    def form_valid(self, form):
+        user = get_object_or_404(User, id=self.kwargs["id"])
+        new_password = form.cleaned_data["new_password"]
+        
+        # Hash the new password and update the user's record
+        user.password = make_password(new_password)
+        user.save()
+         # Log the Password change action
+        create_log_entry(
+            user=self.request.user,
+            content_type=ContentType.objects.get_for_model(User),
+            object_id=user.pk,
+            object_repr=str(user),
+            action_flag=2,  # UPDATE action
+            change_message=f"Admin {self.request.user} changed the password for user {user.username}."
+        )
+
+        messages.success(self.request, "User's password updated successfully.")
+        return redirect(reverse("admin_user_detail", kwargs={"id": user.id}))
+
+
+
+
+
 
 
