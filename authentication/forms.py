@@ -93,7 +93,7 @@ class AdminUpdateUserForm(forms.ModelForm):
         fields = [
             'full_name', 'email', 'phone_number',  'country', 'location', 'occupation', 'date_of_birth',
             'gender', 'photo', 'id_type', 'id_number', 'id_front_view', 'id_back_view', 'specialization', 'emergency_contact_phone','emergency_contact_location','emergency_contact_relationship',
-             'password1', 'password2', 'is_doctor', 'is_patient', 'is_worker', 'is_admin','bio'
+             'password',  'is_doctor', 'is_patient', 'is_worker', 'is_admin','bio'
         ]
 
         def clean_email(self):
@@ -107,3 +107,29 @@ class AdminUpdateUserForm(forms.ModelForm):
             if User.objects.filter(phone_number=phone_number).exclude(pk=self.instance.pk).exists():
                raise forms.ValidationError("This Phone Number is already in use! Try another phone number.")
             return phone_number
+
+
+class AdminChangePasswordForm(forms.ModelForm):
+    new_password = forms.CharField(
+        label="New Password",
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Enter new password', 'autocomplete': 'off'}),
+    )
+    confirm_password = forms.CharField(
+        label="Confirm Password",
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Confirm new password', 'autocomplete': 'off'}),
+    )
+
+    class Meta:
+        model = User
+        fields = []  # No default fields, just for password update
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_password = cleaned_data.get("new_password")
+        confirm_password = cleaned_data.get("confirm_password")
+
+        if new_password != confirm_password:
+            raise forms.ValidationError("Passwords do not match. Please try again.")
+
+        return cleaned_data
+    
