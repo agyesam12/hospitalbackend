@@ -2,9 +2,10 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.hashers import make_password
 from django.conf import settings
-#from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet
 from packages.integerId import IntegerIDField
 from django.urls import reverse
+import base64
 
 ROLES = (
     ('Doctor','doctor'),
@@ -70,25 +71,112 @@ class User(AbstractUser):
 
 
 
-#class DoctorNote(models.Model):
-    #doctor = models.ForeignKey("User", on_delete=models.CASCADE, related_name="notes")
-    #patient = models.ForeignKey("User", on_delete=models.CASCADE, related_name="patient_notes")
-    #encrypted_notes = models.TextField()
-    #created_at = models.DateTimeField(auto_now_add=True)
 
-    #def encrypt_notes(self, plaintext):
-        """Encrypts doctor notes using Fernet encryption"""
-        #cipher = Fernet(settings.SECRET_ENCRYPTION_KEY.encode())
-       # self.encrypted_notes = cipher.encrypt(plaintext.encode()).decode()
 
-    #def decrypt_notes(self):
-        """Decrypts and returns the original note text"""
-        #cipher = Fernet(settings.SECRET_ENCRYPTION_KEY.encode())
-        #return cipher.decrypt(self.encrypted_notes.encode()).decode()
+class DoctorAssignment(models.Model):
+    id = IntegerIDField(unique=True, editable=False, primary_key=True)  # Custom ID
+    patient = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name="assigned_doctor"
+    )
+    doctor = models.ForeignKey(User,
+        on_delete=models.CASCADE, 
+        related_name="patients"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    #def save(self, *args, **kwargs):
-        """Ensure notes are encrypted before saving"""
-        #if not self.encrypted_notes:
-            #raise ValueError("Cannot save an empty note")
-        #super().save(*args, **kwargs)
+    class Meta:
+        unique_together = ('patient', 'doctor')  # A patient can only have one doctor
+        verbose_name = "Doctor Assignment"
+        verbose_name_plural = "Doctor Assignments"
+
+    def __str__(self):
+        return f"{self.patient.full_name} → {self.doctor.full_name}"
+
+
+class DoctorNote(models.Model):
+    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="doctor_notes")
+    patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="patient_notes")
+    encrypted_notes = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """ Ensure only one note exists per doctor-patient pair (delete old note) """
+        DoctorNote.objects.filter(doctor=self.doctor, patient=self.patient).delete()
+        super().save(*args, **kwargs)
+
+        #  Trigger LLM processing after saving
+        self.process_actionable_steps()
+
+    
+    def encrypt_notes(self, plaintext):
+        # Encrypting user notes  before saving 
+        key = settings.SECRET_ENCRYPTION_KEY.encode()  
+        cipher = Fernet(key)
+        self.encrypted_notes = cipher.encrypt(plaintext.encode()).decode()
+
+    
+
+    def decrypt_notes(self):
+        #Decrypting notes for only  doctor & patient to see
+        key = settings.SECRET_ENCRYPTION_KEY.encode()
+        cipher = Fernet(key)
+        return cipher.decrypt(self.encrypted_notes.encode()).decode()
+
+
+    def process_actionable_steps(self):
+        """ 🔹 Call LLM to generate actionable steps """
+        from .utils import extract_actionable_steps
+        extract_actionable_steps(self)
+
+class ActionableStep(models.Model):
+    note = models.OneToOneField(DoctorNote, on_delete=models.CASCADE, related_name="actionable_steps")
+    checklist = models.JSONField(default=list)  
+    plan = models.JSONField(default=list)  
+    completed_checklist = models.JSONField(default=list, blank=True) 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def mark_checklist_item_completed(self, item):
+        # Mark a checklist item as completed. 
+        if item in self.checklist and item not in self.completed_checklist:
+            self.completed_checklist.append(item)
+            self.save()
+
+    def __str__(self):
+        return f"Steps for {self.note.patient.full_name} (Doctor: {self.note.doctor.full_name})"
+
+
+
+class Reminder(models.Model):
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reminders")
+    step = models.ForeignKey(ActionableStep, on_delete=models.CASCADE, related_name="reminders")
+    task_description = models.TextField()
+    scheduled_at = models.DateTimeField()
+    completed = models.BooleanField(default=False)
+
+    def mark_completed(self):
+        self.completed = True
+        self.save()
+
+    def __str__(self):
+        return f"Reminder for {self.patient.full_name} at {self.scheduled_at}"
+
+
+class PatientCheckIn(models.Model):
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="check_ins")
+    timestamp = models.DateTimeField(auto_now_add=True)
+    completed_tasks = models.JSONField(default=list)  # Stores completed actions
+
+    def mark_task_completed(self, task):
+        # Mark a scheduled task as completed. 
+        if task not in self.completed_tasks:
+            self.completed_tasks.append(task)
+            self.save()
+
+    def __str__(self):
+        return f"Check-in for {self.patient.full_name} at {self.timestamp}"
+
+
+
 
