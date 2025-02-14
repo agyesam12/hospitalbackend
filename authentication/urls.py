@@ -25,7 +25,7 @@ urlpatterns = [
     
     path('register/',UserSignUp.as_view(), name='register'),
     path('login/',LoginPageView.as_view(), name='login'),
-    path('logout/', LogoutView.as_view(), name='logout'),
+    path('signout/', UserLogoutView.as_view(), name='logout'),
     path('profile/update/', ProfileUpdateView.as_view(), name='profile_update'),
     path('update_password/',auth_view.PasswordChangeView.as_view(template_name="update_password.html",success_url="user_dashboard" ),name='update_password'),
     #admin urls
