@@ -549,7 +549,7 @@ class AdminUpdateUserView(LoginRequiredMixin, UpdateView):
             object_id=self.object.pk,
             object_repr=str(self.object),
             action_flag=1,
-            change_message=f"Admin {self.request.user} updated : {self.object.username} account"
+            change_message=f"Admin {self.request.user} updated : {self.object.full_name} account"
            )
 
         return super().form_valid(form)
