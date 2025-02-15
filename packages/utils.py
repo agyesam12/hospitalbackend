@@ -7,6 +7,7 @@ from django.contrib.auth.hashers import make_password
 from django.contrib import messages
 from authentication.models import *
 import json
+import ast 
 
 
 openai.api_key = settings.OPENAI_API_KEY  #
