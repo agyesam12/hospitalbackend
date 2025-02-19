@@ -2,6 +2,7 @@ from rest_framework.serializers import ModelSerializer
 from rest_framework import serializers
 from .models import User,DoctorAssignment
 from .models import *
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -97,6 +98,12 @@ class PatientCheckInSerializer(serializers.ModelSerializer):
         return instance
 
              
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data['role'] = self.user.role  # Send user role in response
+        data['email'] = self.user.email
+        return data
 
 
 

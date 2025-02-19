@@ -80,12 +80,6 @@ class SecureView(APIView):
         return Response({"message": "You are authenticated!"})
 
 
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        data['role'] = self.user.role  # Send user role in response
-        data['email'] = self.user.email
-        return data
 
 
 class LoginView(TokenObtainPairView):
